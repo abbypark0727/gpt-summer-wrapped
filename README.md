@@ -118,4 +118,4 @@ Summer window: src/metrics/summer.js uses June 1 → Aug 31 of the year with the
 Slides: definitions live in src/slides/* (composed in UploadAndBuild.jsx).
 
 ### License
-Drew inspiration from MIT for the basic template and project layout.
+Inspired by community “wrapped” templates (MIT) and built with: Vite, React 18, Emotion, Framer Motion, Recharts.
