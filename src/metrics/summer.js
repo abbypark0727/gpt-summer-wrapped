@@ -94,16 +94,14 @@ function makeRoast(metrics) {
 
 export function computeSummerMetrics(threads, opts = {}) {
   // 1) Flatten messages and normalize role
-  const allMsgs = threads
-    .flatMap((t) =>
-      (t.messages || []).map((m) => ({
-        ...m,
-        role: String(m.role || "").toLowerCase(), // normalize
-        threadId: t.id,
-        threadTitle: t.title || "Conversation",
-      }))
-    )
-    .filter((m) => m.createdAt);
+    const allMsgs = threads.flatMap((t) =>
+    (t.messages || []).map(m => ({
+      ...m,
+      role: String(m.role || "").toLowerCase(),
+      threadId: t.id,
+      threadTitle: t.title || "Conversation",
+    }))
+  ).filter(m => m.createdAt);
 
   if (!allMsgs.length) {
     const now = new Date();
@@ -121,6 +119,11 @@ export function computeSummerMetrics(threads, opts = {}) {
       weekBuckets: [],
       longestThread: null,
       persona: { blurb: "No summer data found.", tags: [] },
+      keywords: [],
+      emotions: { dailyScores: [], panicCount: 0, lolCount: 0 },
+      timeSavedMinutes: 0,
+      accomplishments: [],
+      roast: "Not enough data to roast you. Come back after a good crash out.",
     };
   }
 
@@ -148,134 +151,103 @@ export function computeSummerMetrics(threads, opts = {}) {
     return d >= start && d <= end;
   });
 
-  if (!inSummer.length) {
-    // Nothing in the chosen summer window
-    return {
-      year: chosenYear,
-      startISO: start.toISOString().slice(0, 10),
-      endISO: end.toISOString().slice(0, 10),
-      totalPrompts: 0,
-      totalAssistant: 0,
-      uniqueDays: 0,
-      longestStreak: 0,
-      busiestDay: null,
-      topics: [],
-      weekBuckets: [],
-      longestThread: null,
-      persona: { blurb: "No summer data found.", tags: [] },
-    };
-  }
+  const userSummer = inSummer.filter(m => m.role === "user");
+  const totalPrompts = userSummer.length;
+  const totalAssistant = inSummer.filter(m => m.role === "assistant").length;
 
-  // Separate user messages (for topics, streaks, weekly buckets)
-  const userSummer = inSummer.filter((m) => m.role === "user");
-
-  // For keywords
+  // keywords (with optional aliases boost)
   const aliases = new Set((opts.aliases || []).map(s => s.toLowerCase()));
   const keywords = extractKeywords(userSummer, { topN: 12, boost: aliases });
 
-  // 3) Counts
-  const totalPrompts = userSummer.length;
-  const totalAssistant = inSummer.filter((m) => m.role === "assistant").length;
-
-  // 4) Daily buckets & streaks (track user vs all)
-  const daily = new Map(); // YYYY-MM-DD -> { user: n, all: n }
+  // daily usage & streaks
+  const daily = new Map();
   for (const m of inSummer) {
     const key = toYMD(m.createdAt);
     const prev = daily.get(key) || { user: 0, all: 0 };
-    daily.set(key, {
-      user: prev.user + (m.role === "user" ? 1 : 0),
-      all: prev.all + 1,
-    });
+    daily.set(key, { user: prev.user + (m.role === "user" ? 1 : 0), all: prev.all + 1 });
   }
   const uniqueDays = daily.size;
 
-  // Busiest day: by user count, tie-break by all
   let busiestDay = null;
   for (const [day, v] of daily.entries()) {
-    if (
-      !busiestDay ||
-      v.user > busiestDay.count ||
-      (v.user === busiestDay.count && v.all > busiestDay.all)
-    ) {
+    if (!busiestDay || v.user > busiestDay.count || (v.user === busiestDay.count && v.all > busiestDay.all)) {
       busiestDay = { date: day, count: v.user, all: v.all };
     }
   }
 
-  // Longest streak of consecutive days with >=1 user msg
   const daysSorted = [...daily.keys()].sort();
-  let longestStreak = 0;
-  let current = 0;
-  let prevDate = null;
+  let longestStreak = 0, current = 0, prevDate = null;
   for (const dStr of daysSorted) {
     const v = daily.get(dStr);
-    if (!v || v.user === 0) {
-      // breaks streak if that day had no user prompts
-      prevDate = null;
-      continue;
-    }
-    if (!prevDate) {
-      current = 1;
-    } else {
-      const prev = new Date(prevDate);
-      const cur = new Date(dStr);
-      const diff = (cur - prev) / (1000 * 60 * 60 * 24);
+    if (!v || v.user === 0) { prevDate = null; continue; }
+    if (!prevDate) current = 1;
+    else {
+      const prev = new Date(prevDate), cur = new Date(dStr);
+      const diff = (cur - prev) / (1000*60*60*24);
       current = diff === 1 ? current + 1 : 1;
     }
     longestStreak = Math.max(longestStreak, current);
     prevDate = dStr;
   }
 
-  // 5) Topics (user prompts only)
+  // topics
   const topicCounts = new Map();
   for (const m of userSummer) {
-    const cats = categorize(tokenize(m.text));
-    for (const c of cats) topicCounts.set(c, (topicCounts.get(c) || 0) + 1);
+    for (const c of categorize(tokenize(m.text))) {
+      topicCounts.set(c, (topicCounts.get(c) || 0) + 1);
+    }
   }
   const topics = [...topicCounts.entries()]
     .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a,b) => b.value - a.value);
 
-  // 6) Weekly buckets (user prompts only)
-  const weekMap = new Map(); // label -> count
+  // weekly buckets
+  const weekMap = new Map();
   for (const m of userSummer) {
     const d = new Date(m.createdAt);
     const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-    const dow = day.getUTCDay(); // 0 Sun ... 6 Sat
-    const monday = new Date(day);
-    const delta = (dow + 6) % 7; // days since Monday
-    monday.setUTCDate(day.getUTCDate() - delta);
-    const label = `Week of ${monday.toISOString().slice(5, 10)}`; // "Week of 06-02"
+    const dow = day.getUTCDay();
+    const monday = new Date(day); monday.setUTCDate(day.getUTCDate() - ((dow + 6) % 7));
+    const label = `Week of ${monday.toISOString().slice(5,10)}`;
     weekMap.set(label, (weekMap.get(label) || 0) + 1);
   }
   const weekBuckets = [...weekMap.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    .sort((a,b)=>a[0].localeCompare(b[0]))
     .map(([activity, count]) => ({ activity, count }));
 
-  // 7) Longest thread (by turns in summer window, user+assistant)
-  const threadCounts = new Map(); // threadId -> { title, turns }
-  for (const m of inSummer) {
-    const cur = threadCounts.get(m.threadId) || { title: m.threadTitle, turns: 0 };
-    cur.turns += 1;
-    threadCounts.set(m.threadId, cur);
-  }
-  const longestThreadEntry = [...threadCounts.entries()].sort((a, b) => b[1].turns - a[1].turns)[0];
-  const longestThread = longestThreadEntry
-    ? { id: longestThreadEntry[0], title: longestThreadEntry[1].title, turns: longestThreadEntry[1].turns }
-    : null;
+  // emotions
+  const emo = analyzeEmotions(userSummer);
+  const emotions = { dailyScores: emo.dailyScores, panicCount: emo.panicCount, lolCount: emo.lolCount };
 
-  // 8) Persona blurb
-  const topTwo = topics.slice(0, 2).map((t) => t.name);
+  // time saved (cap 60 min/day)
+  const perDay = new Map();
+  for (const m of userSummer) {
+    const key = toYMD(m.createdAt);
+    const add = estimateTimeSavedPerMessage(m);
+    perDay.set(key, (perDay.get(key) || 0) + add);
+  }
+  let timeSavedMinutes = 0;
+  for (const v of perDay.values()) {
+    timeSavedMinutes += Math.min(v, 60);
+  }
+
+  // accomplishments
+  const accomplishments = extractAccomplishments(userSummer);
+
+  // persona + roast
+  const topTwo = topics.slice(0,2).map(t => t.name);
   const persona = {
     blurb: topTwo.length
       ? `You leaned ${topTwo[0]} with a side of ${topTwo[1] || "General"} this summer.`
       : "Your summer usage was low-volume but eclectic.",
     tags: [`${totalPrompts} prompts`, `${longestStreak}-day streak`, topTwo[0] || "General"],
   };
+  const roast = makeRoast({ longestStreak, keywords, emotions });
 
   return {
     year: chosenYear,
-    startISO: start.toISOString().slice(0, 10),
-    endISO: end.toISOString().slice(0, 10),
+    startISO: SUMMER_START(chosenYear).toISOString().slice(0,10),
+    endISO:   SUMMER_END(chosenYear).toISOString().slice(0,10),
     totalPrompts,
     totalAssistant,
     uniqueDays,
@@ -283,8 +255,20 @@ export function computeSummerMetrics(threads, opts = {}) {
     busiestDay,
     topics,
     weekBuckets,
-    longestThread,
+    longestThread: (() => {
+      const threadCounts = new Map();
+      for (const m of inSummer) {
+        const cur = threadCounts.get(m.threadId) || { title: m.threadTitle, turns: 0 };
+        cur.turns += 1; threadCounts.set(m.threadId, cur);
+      }
+      const e = [...threadCounts.entries()].sort((a,b)=>b[1].turns - a[1].turns)[0];
+      return e ? { id: e[0], title: e[1].title, turns: e[1].turns } : null;
+    })(),
     persona,
     keywords,
+    emotions,
+    timeSavedMinutes,
+    accomplishments,
+    roast,
   };
 }
