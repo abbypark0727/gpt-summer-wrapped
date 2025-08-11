@@ -93,7 +93,7 @@ export function buildSummerSlides(metrics) {
     subtext: "Based on your summer prompts",
   };
 
-  const maybeKeywordsPie = (keywordsItems.length
+  const maybeKeywordsPie = (keywordItems.length
   ? [{
       id: "keywords-pie",
       title: "Most-used Keywords",
@@ -210,7 +210,7 @@ export function buildSummerSlides(metrics) {
     ...maybeKeywordsList,
     ...maybeWeekly,
     ...maybeVibes,
-    ...maybeStats,
+    ...vibeStats,
     timeSaved,
     ...maybeWins,
     persona,
