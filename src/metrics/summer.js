@@ -2,14 +2,12 @@
 // Computes summer (June 1–Aug 31) metrics from normalized threads.
 
 import { extractKeywords } from '../nlp/keywords';
+import { analyzeEmotions } from '../nlp/sentiment';
 
 const SUMMER_START = (year) => new Date(Date.UTC(year, 5, 1)); // June 1
 const SUMMER_END = (year) => new Date(Date.UTC(year, 7, 31, 23, 59, 59, 999)); // Aug 31
 
-function toYMD(d) {
-  const z = new Date(d);
-  return z.toISOString().slice(0, 10); // YYYY-MM-DD
-}
+function toYMD(d) { return new Date(d).toISOString().slice(0,10); }
 
 function tokenize(text) {
   return (text || "")
@@ -35,6 +33,51 @@ function categorize(tokens) {
     if (hit) out.push(rule.name);
   }
   return out.length ? out : ["General"];
+}
+
+// Heuristic: minutes saved per user prompt by topic
+const TIME_SAVED_MIN = {
+  "Coding/Debugging": 9,
+  "Writing/Comms":    6,
+  "Data/Analysis":    8,
+  "Research":         7,
+  "Math/Stats":       7,
+  "General":          4,
+};
+
+function estimateTimeSavedPerMessage(m) {
+  const toks = tokenize(m.text);
+  const cats = categorize(toks);
+  let base = Math.max(...cats.map(c => TIME_SAVED_MIN[c] ?? 4));
+  if (toks.length > 60) base += 2;
+  if (/\burgent|quick|deadline\b/i.test(m.text)) base += 2;
+  return base;
+}
+
+// Pull likely accomplishments from phrasing
+function extractAccomplishments(userMsgs) {
+  const RX = [
+    /merged|landed|shipped|launched/i,
+    /fixed|resolved|closed/i,
+    /approved|got approval|sign[- ]off/i,
+    /offer (received|got)|return offer/i,
+    /presented|demo(ed)?|published/i,
+  ];
+  const seen = new Set();
+  const items = [];
+
+  for (const m of userMsgs) {
+    if (!RX.some(rx => rx.test(m.text))) continue;
+    const text = m.text.replace(/\s+/g, " ").trim();
+    // short label: first 90 chars
+    const label = text.slice(0, 90) + (text.length > 90 ? "…" : "");
+    if (seen.has(label)) continue;
+    seen.add(label);
+    items.push({ name: label, date: toYMD(m.createdAt) });
+  }
+  // prefer recent, cap 6
+  items.sort((a,b) => b.date.localeCompare(a.date));
+  return items.slice(0, 6);
 }
 
 export function computeSummerMetrics(threads, opts = {}) {
