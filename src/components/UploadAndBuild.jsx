@@ -1,7 +1,7 @@
 // src/components/UploadAndBuild.jsx
 import { useState, useRef } from "react";
 import styled from "@emotion/styled";
-import Story from "./Story";
+import Story from './Story.jsx';
 import { normalizeChatGPTExport } from "../data/chatgpt/parse";
 import { computeSummerMetrics } from "../metrics/summer";
 import { buildSummerSlides } from "../slides/summerWrapped";
@@ -72,6 +72,7 @@ export default function UploadAndBuild() {
         return;
       }
 
+    //   const aliases = aliasesStr.split(',').map(s => s.trim()).filter(Boolean);
       const metrics = computeSummerMetrics(threads);
       const slides = buildSummerSlides(metrics);
 

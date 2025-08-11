@@ -1,6 +1,8 @@
 // src/metrics/summer.js
 // Computes summer (June 1–Aug 31) metrics from normalized threads.
 
+import { extractKeywords } from '../nlp/keywords';
+
 const SUMMER_START = (year) => new Date(Date.UTC(year, 5, 1)); // June 1
 const SUMMER_END = (year) => new Date(Date.UTC(year, 7, 31, 23, 59, 59, 999)); // Aug 31
 
@@ -111,6 +113,10 @@ export function computeSummerMetrics(threads, opts = {}) {
 
   // Separate user messages (for topics, streaks, weekly buckets)
   const userSummer = inSummer.filter((m) => m.role === "user");
+
+  // For keywords
+  const aliases = new Set((opts.aliases || []).map(s => s.toLowerCase()));
+  const keywords = extractKeywords(userSummer, { topN: 12, boost: aliases });
 
   // 3) Counts
   const totalPrompts = userSummer.length;
@@ -224,5 +230,6 @@ export function computeSummerMetrics(threads, opts = {}) {
     weekBuckets,
     longestThread,
     persona,
+    keywords,
   };
 }

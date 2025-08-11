@@ -88,6 +88,27 @@ export function buildSummerSlides(metrics) {
     subtext: "Based on your summer prompts",
   };
 
+  // after topicsPie/topicsList blocks
+  const maybeKeywordsPie = (metrics.keywords?.length
+  ? [{
+      id: "keywords-pie",
+      title: "Most-used Keywords",
+      type: "pie",
+      subtext: "What you brought up the most",
+      items: metrics.keywords, // [{ name, value }]
+    }]
+  : []);
+
+  const maybeKeywordsList = (metrics.keywords?.length
+  ? [{
+      id: "keywords-list",
+      title: "Top Keywords",
+      type: "list",
+      items: metrics.keywords.slice(0, 10).map(k => ({ name: k.name, count: `— ${k.value}x` })),
+      subtext: "Based on your summer prompts",
+    }]
+  : []);
+
   const maybeWeekly = (metrics.weekBuckets?.length
     ? [{
         id: "weekly",
@@ -129,6 +150,8 @@ export function buildSummerSlides(metrics) {
     ...maybeBusiest,
     topicsPie,
     topicsList,
+    ...maybeKeywordsPie,
+    ...maybeKeywordsList,
     ...maybeWeekly,
     ...maybeThread,
     persona,

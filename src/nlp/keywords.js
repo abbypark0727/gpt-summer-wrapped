@@ -1,27 +1,46 @@
-import { STOPWORDS } from './stopwords';
-const TOKEN = /[A-Za-z0-9+#._-]+/g;
+// src/nlp/keywords.js
+const STOP = new Set([
+  "the","a","an","and","or","but","of","to","in","on","for","with","without","by","as",
+  "is","are","was","were","be","been","being","it","its","at","from","this","that",
+  "i","you","we","they","he","she","them","my","our","your","me","us",
+  "about","into","over","under","up","down","out","not","no","yes","ok","okay",
+  "thanks","thank","pls","please","hey","hi","hello",
+]);
 
-export function extractKeywords(messages, { topN = 10, boost = new Set() } = {}) {
+function tokenize(text) {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.\-\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * messages: [{ role, text, createdAt }]
+ * opts: { topN = 12, boost = Set<string> } // strings already lowercase
+ */
+export function extractKeywords(messages, opts = {}) {
+  const topN = opts.topN ?? 12;
+  const boost = opts.boost ?? new Set();
+
   const freq = new Map();
+
   for (const m of messages) {
-    const text = m?.text || "";
-    const raw = text.match(TOKEN) || [];
-    for (const t of raw) {
-      const lower = t.toLowerCase();
-      if (lower.length < 3) continue;
-      if (STOPWORDS.has(lower)) continue;
-      if (/^\d+$/.test(lower)) continue;
+    if ((m.role || "").toLowerCase() !== "user") continue;
+    const toks = tokenize(m.text);
+    for (const t of toks) {
+      if (t.length < 2) continue;
+      if (STOP.has(t)) continue;
 
-    let weight = 1;
-      if (/^[A-Z0-9_-]{3,}$/.test(t)) weight += 1.5;      // ALLCAPS boost
-      if (/^[A-Z][a-z0-9_-]+$/.test(t)) weight += 0.5;    // Capitalized boost
-      if (boost.has(lower) || boost.has(t)) weight += 3;  // user-specified aliases
-
-    freq.set(lower, (freq.get(lower) || 0) + weight);
+      const cur = freq.get(t) ?? 0;
+      // alias boost: if token is one of your aliases, give it extra weight
+      const weight = boost.has(t) ? 5 : 1; // tweakable
+      freq.set(t, cur + weight);
     }
   }
-  return [...freq.entries()]
-    .map(([name, value]) => ({ name: name.toUpperCase(), value: Math.round(value) }))
-    .sort((a,b) => b.value - a.value)
-    .slice(0, topN);
+
+  return Array.from(freq.entries())
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([name, value]) => ({ name, value }));
 }
