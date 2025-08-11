@@ -17,6 +17,10 @@ const fmtWMD = (isoYMD) => {
   const d = parseISO_utc(isoYMD);
   return `${WD[d.getUTCDay()]}, ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 };
+const fmtHM = (mins) => {
+  const h = Math.floor((mins||0)/60), m = (mins||0)%60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+};
 
 export function buildSummerSlides(metrics) {
   const start = metrics.startISO || `${metrics.year}-06-01`;
@@ -24,6 +28,7 @@ export function buildSummerSlides(metrics) {
   const subrange = `${fmtMD(start)}–${fmtMD(end)}, ${parseISO_utc(end).getUTCFullYear()}`;
 
   const topicItems = Array.isArray(metrics.topics) ? metrics.topics : [];
+  const keywordItems = Array.isArray(metrics.keywords) ? metrics.keywords : [];
 
   const base = [
     {
@@ -88,23 +93,22 @@ export function buildSummerSlides(metrics) {
     subtext: "Based on your summer prompts",
   };
 
-  // after topicsPie/topicsList blocks
-  const maybeKeywordsPie = (metrics.keywords?.length
+  const maybeKeywordsPie = (keywordsItems.length
   ? [{
       id: "keywords-pie",
       title: "Most-used Keywords",
       type: "pie",
       subtext: "What you brought up the most",
-      items: metrics.keywords, // [{ name, value }]
+      items: keywordItems, // [{ name, value }]
     }]
   : []);
 
-  const maybeKeywordsList = (metrics.keywords?.length
+  const maybeKeywordsList = (keywordItems.length
   ? [{
       id: "keywords-list",
       title: "Top Keywords",
       type: "list",
-      items: metrics.keywords.slice(0, 10).map(k => ({ name: k.name, count: `— ${k.value}x` })),
+      items: keywordItems.slice(0, 10).map(k => ({ name: k.name, count: `— ${k.value}x` })),
       subtext: "Based on your summer prompts",
     }]
   : []);
@@ -119,22 +123,74 @@ export function buildSummerSlides(metrics) {
       }]
     : []);
 
-  const maybeThread = metrics.longestThread
-    ? [{
-        id: "thread",
-        title: "Deepest Dive",
-        type: "list",
-        items: [{ name: metrics.longestThread.title, count: `— ${metrics.longestThread.turns} turns` }],
-        subtext: "Your longest summer thread",
-      }]
-    : [];
+  // Vibes / Emotions
+  const vibeChartData = (metrics.emotions?.dailyScores || []).map(d => ({
+    activity: d.date.slice(5), // MM-DD
+    count: d.score,            // can be negative; BarChart will draw below axis
+  }));
 
+  const maybeVibes = (vibeChartData.length
+    ? [{
+        id: "vibes",
+        title: "Daily Vibes",
+        type: "chart",
+        chartData: vibeChartData,
+        content: "Positive above the line, negative below.",
+      }]
+    : []);
+
+  const vibeStats = [
+    {
+      id: "lol",
+      title: "LOL Moments",
+      type: "stat",
+      content: `${metrics.emotions?.lolCount || 0}`,
+      subtext: "Summer chuckles 😅",
+    },
+    {
+      id: "panic",
+      title: "Panic Moments",
+      type: "stat",
+      content: `${metrics.emotions?.panicCount || 0}`,
+      subtext: "Frantic vibes 🫠",
+    },
+  ];
+
+   // Time saved
+  const timeSaved = {
+    id: "time-saved",
+    title: "Time Saved (est.)",
+    type: "stat",
+    content: fmtHM(metrics.timeSavedMinutes || 0),
+    subtext: "Based on task type × prompts (capped at 60m/day)",
+  };
+
+  // Accomplishments
+  const maybeWins = (metrics.accomplishments?.length
+    ? [{
+        id: "wins",
+        title: "Highlights & Wins",
+        type: "list",
+        items: metrics.accomplishments.map(a => ({ name: a.name, count: `— ${a.date}` })),
+        subtext: "Pulled from your own prompts",
+      }]
+    : []);
+
+  
   const persona = {
     id: "persona",
     title: "Your Summer Persona",
     type: "text",
     content: `${metrics.persona?.blurb || ""}<br/><br/>${(metrics.persona?.tags || []).map(t => `#${t}`).join("  ")}`,
     subtext: "Shareable vibe snapshot",
+  };
+
+  const roast = {
+    id: "roast",
+    title: "Roast Mode (beta)",
+    type: "text",
+    content: metrics.roast || "We’ll be nice… for now.",
+    subtext: "Toggle this off before sending to your manager 😉",
   };
 
   const outro = {
@@ -153,8 +209,12 @@ export function buildSummerSlides(metrics) {
     ...maybeKeywordsPie,
     ...maybeKeywordsList,
     ...maybeWeekly,
-    ...maybeThread,
+    ...maybeVibes,
+    ...maybeStats,
+    timeSaved,
+    ...maybeWins,
     persona,
+    roast,
     outro,
   ];
 }
