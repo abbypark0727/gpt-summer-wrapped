@@ -80,6 +80,18 @@ function extractAccomplishments(userMsgs) {
   return items.slice(0, 6);
 }
 
+function makeRoast(metrics) {
+  const kw0 = metrics.keywords?.[0]?.name;
+  if (metrics.longestStreak <= 2) {
+    return `Commitment issues? A ${metrics.longestStreak}-day streak says “see you… eventually.”`;
+  }
+  if ((metrics.emotions?.panicCount || 0) > (metrics.emotions?.lolCount || 0)) {
+    return `You kept the panic button warm. Maybe next summer we swap “omg” for “lol”?`;
+  }
+  if (kw0) return `You whispered “${kw0}” into ChatGPT’s ear all summer. Obsession? Product focus.`;
+  return `Balanced diet of prompts. Not too spicy, not too bland. Chef’s kiss.`;
+}
+
 export function computeSummerMetrics(threads, opts = {}) {
   // 1) Flatten messages and normalize role
   const allMsgs = threads
