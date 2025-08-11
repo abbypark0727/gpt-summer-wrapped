@@ -523,40 +523,45 @@ const Story = ({ config = defaultConfig }) => {
         );
       case 'chart': {
         const hasData = Array.isArray(slide.chartData) && slide.chartData.length > 0;
+        const first = hasData ? slide.chartData[0] : {};
+
+        // detect x / y keys, including 'date' + 'score'
+        const xKey =
+            ('month' in first && 'month') ||
+            ('activity' in first && 'activity') ||
+            ('date' in first && 'date') ||
+            ('name' in first && 'name') ||
+            Object.keys(first)[0] || 'date';
+
+        const yKey =
+            ('count' in first && 'count') ||
+            ('hours' in first && 'hours') ||
+            ('plays' in first && 'plays') ||
+            ('value' in first && 'value') ||
+            ('score' in first && 'score') ||
+            // last resort: first numeric key
+            (Object.keys(first || {}).find(k => typeof first[k] === 'number') || 'score');
+        console.log('chart', slide.id, { xKey, yKey, sample: slide.chartData?.[0] });
         return (
-          <SlideContent>
+            <SlideContent>
             <h2>{slide.title}</h2>
             {hasData ? (
-              <ChartContainer>
+                <ChartContainer>
                 <ResponsiveContainer width="95%" height="100%">
-                  <BarChart data={slide.chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                    <XAxis
-                      dataKey={
-                        slide.chartData[0].month ? 'month' :
-                        slide.chartData[0].activity ? 'activity' : 'song'
-                      }
-                      stroke="#666"
-                      fontSize={12}
-                    />
-                    <YAxis stroke="#666" fontSize={12} />
-                    <Bar
-                      dataKey={
-                        slide.chartData[0].count ? 'count' :
-                        slide.chartData[0].hours ? 'hours' : 'plays'
-                      }
-                      fill="#d44f8c"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
+                    <BarChart data={slide.chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                    <XAxis dataKey={xKey} stroke="#666" fontSize={12} />
+                    <YAxis stroke="#666" fontSize={12} domain={['dataMin - 1', 'dataMax + 1']} />
+                    <Bar dataKey={yKey} fill="#d44f8c" radius={[4, 4, 0, 0]} />
+                    </BarChart>
                 </ResponsiveContainer>
-              </ChartContainer>
+                </ChartContainer>
             ) : (
-              <p>No data to display.</p>
+                <p>No data to display.</p>
             )}
             {slide.content && <p>{slide.content}</p>}
-          </SlideContent>
+            </SlideContent>
         );
-      }
+        }
       case 'full-cover':
         return (
           <FullCoverSlide image={slide.image}>
@@ -583,7 +588,7 @@ const Story = ({ config = defaultConfig }) => {
         return (
           <SlideContent>
             <h2 dangerouslySetInnerHTML={{ __html: slide.title }} />
-            <p>{slide.content}</p>
+            <p dangerouslySetInnerHTML={{ __html: slide.content }} />
             {slide.subtext && <p>{slide.subtext}</p>}
           </SlideContent>
         );

@@ -1,7 +1,7 @@
 // src/components/UploadAndBuild.jsx
 import { useState, useRef } from "react";
 import styled from "@emotion/styled";
-import Story from "./Story";
+import Story from './Story.jsx';
 import { normalizeChatGPTExport } from "../data/chatgpt/parse";
 import { computeSummerMetrics } from "../metrics/summer";
 import { buildSummerSlides } from "../slides/summerWrapped";
@@ -61,33 +61,53 @@ export default function UploadAndBuild() {
   const [error, setError] = useState("");
 
   const onFile = async (file) => {
-    setError("");
-    try {
-      const text = await file.text();
-      const json = JSON.parse(text);
-      const { threads } = normalizeChatGPTExport(json);
+  setError("");
+  try {
+    const text = await file.text();
 
-      if (!threads || threads.length === 0) {
-        setError("No conversations found in that JSON. Try your ChatGPT export’s conversations.json.");
-        return;
-      }
-
-      const metrics = computeSummerMetrics(threads);
-      const slides = buildSummerSlides(metrics);
-
-      const finalConfig = {
-        startDate: metrics.startISO,
-        endDate: metrics.endISO,
-        slides,
-        theme: baseConfig.theme,
-      };
-
-      setConfig(finalConfig);
-    } catch (e) {
-      console.error(e);
-      setError("Could not parse that JSON. Try your ChatGPT export file (conversations.json).");
+    // quick sanity checks
+    const head = text.slice(0, 200);
+    if (head.startsWith("PK")) {
+      throw new Error("Looks like a ZIP. Unzip your export first, then select conversations.json.");
     }
-  };
+    if (/^\s*<!doctype html>|^\s*<html/i.test(head)) {
+      throw new Error("This looks like HTML, not JSON. Pick conversations.json from the unzipped export.");
+    }
+
+    const clean = text.replace(/^\uFEFF/, "");
+    let json;
+    try { json = JSON.parse(clean); }
+    catch (e) { throw new Error(`JSON.parse failed: ${e.message}`); }
+
+    let threadsObj;
+    try { threadsObj = normalizeChatGPTExport(json); }
+    catch (e) { throw new Error(`normalizeChatGPTExport failed: ${e.message}`); }
+
+    const { threads } = threadsObj || {};
+    if (!threads || threads.length === 0) {
+      throw new Error("No conversations found. Use ChatGPT → Settings → Data Controls → Export → unzip → conversations.json");
+    }
+
+    let metrics;
+    try { metrics = computeSummerMetrics(threads); }
+    catch (e) { throw new Error(`computeSummerMetrics failed: ${e.message}`); }
+
+    let slides;
+    try { slides = buildSummerSlides(metrics); }
+    catch (e) { throw new Error(`buildSummerSlides failed: ${e.message}`); }
+
+    const finalConfig = {
+      startDate: metrics.startISO,
+      endDate: metrics.endISO,
+      slides,
+      theme: baseConfig.theme,
+    };
+    setConfig(finalConfig);
+  } catch (e) {
+    console.error(e);
+    setError(String(e.message || e));
+  }
+};
 
   if (config) return <Story config={config} />;
 
